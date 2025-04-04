@@ -1,48 +1,46 @@
 const express = require("express");
 const multer = require("multer");
+const cors = require("cors");
 const fs = require("fs");
-const path = require("path");
+const Replicate = require("replicate");
 
 const app = express();
-const port = process.env.PORT || 10000;
+const port = process.env.PORT || 3000;
 
-// Configurar carpeta de carga
-const uploadDir = path.join(__dirname, "uploads");
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir);
-}
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => {
-    const timestamp = Date.now();
-    const ext = path.extname(file.originalname);
-    cb(null, `${timestamp}${ext}`);
-  },
+// Configuración de Replicate con tu token
+const replicate = new Replicate({
+  auth: process.env.REPLICATE_API_TOKEN,
 });
 
-const upload = multer({ storage });
+// Carpeta temporal donde se guarda la imagen
+const upload = multer({ dest: "uploads/" });
 
-app.use(express.static("public")); // Por si tenés frontend embebido
-app.use(express.json());
+app.use(cors());
 
-app.post("/convert", upload.single("image"), (req, res) => {
-  const style = req.body.style;
-  const imagePath = req.file.path;
+app.post("/convert", upload.single("image"), async (req, res) => {
+  try {
+    const imagePath = req.file.path;
+    const style = req.body.style;
 
-  console.log("Estilo solicitado:", style);
-  console.log("Imagen cargada:", imagePath);
+    // Usamos un modelo de Replicate real, en este caso "tstramer/tinify"
+    const modelId = "tstramer/tinify";
 
-  // Simular procesamiento
-  fs.readFile(imagePath, (err, data) => {
-    if (err) {
-      console.error("Error leyendo la imagen:", err);
-      return res.status(500).send("Error al procesar imagen");
-    }
+    const output = await replicate.run(modelId, {
+      input: {
+        image: fs.createReadStream(imagePath),
+      },
+    });
 
-    res.set("Content-Type", req.file.mimetype);
-    res.send(data);
-  });
+    // Descargar la imagen procesada desde la URL generada por Replicate
+    const response = await fetch(output);
+    const buffer = await response.arrayBuffer();
+
+    res.setHeader("Content-Type", "image/png");
+    res.send(Buffer.from(buffer));
+  } catch (error) {
+    console.error("Error en el servidor:", error);
+    res.status(500).send("Error al procesar la imagen");
+  }
 });
 
 app.listen(port, () => {

@@ -1,19 +1,57 @@
-{
-  "name": "iconmoments-backend",
-  "version": "1.0.0",
-  "description": "Servidor backend para convertir imágenes con estilos",
-  "main": "server.js",
-  "type": "commonjs",
-  "scripts": {
-    "start": "node server.js"
-  },
-  "dependencies": {
-    "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
-    "express": "^4.18.2",
-    "form-data": "^4.0.0",
-    "multer": "1.4.4",
-    "node-fetch": "^2.6.9",
-    "replicate": "^0.25.0"
+// server.js
+const express = require("express");
+const cors = require("cors");
+const multer = require("multer");
+const Replicate = require("replicate");
+const fs = require("fs");
+const path = require("path");
+
+const app = express();
+const PORT = process.env.PORT || 10000;
+
+app.use(cors());
+
+// Middleware de multer para subir archivos
+const upload = multer({ dest: "uploads/" });
+
+// Modelo de prueba (SDXL de Stability AI)
+const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
+const MODELS = {
+  tintin: "stability-ai/sdxl",
+  crayon: "stability-ai/sdxl",
+  newyorker: "stability-ai/sdxl"
+};
+
+// Ruta para convertir imágenes
+app.post("/convert", upload.single("image"), async (req, res) => {
+  const style = req.body.style;
+  const modelId = MODELS[style];
+
+  if (!modelId) {
+    return res.status(400).send("Estilo no válido");
   }
-}
+
+  try {
+    const filePath = req.file.path;
+    const input = {
+      image: fs.createReadStream(filePath),
+      prompt: "Dibujo estilo " + style
+    };
+
+    const output = await replicate.run(modelId, { input });
+
+    // Devuelve la imagen generada (url)
+    res.redirect(output);
+  } catch (err) {
+    console.error("Error en el servidor:", err);
+    res.status(500).send("Error al procesar la imagen");
+  } finally {
+    if (req.file && req.file.path) {
+      fs.unlink(req.file.path, () => {});
+    }
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`Servidor escuchando en http://localhost:${PORT}`);
+});

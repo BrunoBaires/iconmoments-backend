@@ -1,16 +1,17 @@
 {
   "name": "iconmoments-backend",
-  "type": "module",
   "version": "1.0.0",
+  "description": "Servidor backend para convertir imágenes con estilos",
   "main": "server.js",
+  "type": "commonjs",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "cors": "^2.8.5",
     "express": "^4.18.2",
-    "multer": "^1.4.5",
-    "node-fetch": "^3.3.2",
-    "replicate": "^0.24.0"
+    "multer": "1.4.4",
+    "node-fetch": "^2.6.9",
+    "form-data": "^4.0.0",
+    "dotenv": "^16.3.1"
   }
 }

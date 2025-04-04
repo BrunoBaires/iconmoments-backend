@@ -10,61 +10,70 @@ import { fileURLToPath } from 'url';
 
 dotenv.config();
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Crea la carpeta 'uploads' si no existe
+const uploadDir = path.join(process.cwd(), 'uploads');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir);
+}
+
+// Configuración del servidor
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Setup file upload
+// Middleware
+app.use(cors());
+app.use(express.json());
+app.use('/uploads', express.static('uploads'));
+
+// Configuración de multer para guardar imágenes
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, 'uploads/'),
   filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`)
 });
 const upload = multer({ storage });
 
-app.use(cors());
-app.use(express.json());
-app.use('/uploads', express.static('uploads'));
-
-// Required for ES Modules (to get __dirname)
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Set up Replicate and OpenAI
-const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-// Estilos disponibles
-const estilos = {
-  "The New Yorker": "estilo elegante, línea clara, colores planos, estilo narrativo urbano moderno",
-  "Estilo Tintin": "líneas negras, colores planos, iluminación limpia, estilo vintage europeo, fondo claro"
-};
-
+// Endpoint principal
 app.post('/convert', upload.single('image'), async (req, res) => {
-  const styleKey = req.body.style;
-  const imagePath = req.file.path;
+  const imagePath = req.file?.path;
+  const style = req.body?.style;
 
-  const promptBase = estilos[styleKey] || 'dibujo estilo ilustración, líneas limpias y colores planos';
+  if (!imagePath || !style) {
+    return res.status(400).json({ error: 'Faltan datos (imagen o estilo)' });
+  }
 
   try {
-    const prediction = await replicate.run(
-      "lucataco/instant-id:14cf437d40dc72e587f2416d158b63e70d9389302ff9ee86f1309c61b6a06baa",
-      {
-        input: {
-          image: fs.createReadStream(imagePath),
-          prompt: `Retrato transformado en ${promptBase}`,
-          seed: 42,
-          guidance_scale: 7.5,
-          num_inference_steps: 30
-        }
-      }
-    );
+    const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
 
-    res.json({ output: prediction });
+    const modelVersion = {
+      tintin: "tintin-model-id",
+      crayon: "crayon-model-id",
+      newyorker: "newyorker-model-id"
+    }[style];
+
+    if (!modelVersion) {
+      return res.status(400).json({ error: 'Estilo no reconocido' });
+    }
+
+    const output = await replicate.run(modelVersion, {
+      input: { image: fs.createReadStream(imagePath) }
+    });
+
+    const response = await fetch(output);
+    const blob = await response.blob();
+
+    res.setHeader("Content-Type", blob.type);
+    blob.arrayBuffer().then(buffer => res.end(Buffer.from(buffer)));
   } catch (error) {
-    console.error('Error al generar imagen:', error);
-    res.status(500).json({ error: 'Falló la generación de imagen.' });
+    console.error("Error en el servidor:", error);
+    res.status(500).json({ error: 'Error al procesar la imagen' });
   }
 });
 
+// Iniciar servidor
 app.listen(port, () => {
   console.log(`Servidor escuchando en http://localhost:${port}`);
 });
+
